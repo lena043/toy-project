@@ -7,6 +7,7 @@ import (
 	"log"
 	"path/filepath"
 
+	v1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -30,18 +31,31 @@ func updateHPAs(kubeconfig string, targetNamespace string) {
 	if err != nil {
 		panic(err.Error())
 	}
-	hpaClient := clientset.AutoscalingV1().HorizontalPodAutoscalers(targetNamespace)
 
-	hpaList, err := hpaClient.List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		panic(err.Error())
+	var hpaClient = clientset.AutoscalingV1().HorizontalPodAutoscalers(targetNamespace)
+	var hpaList *v1.HorizontalPodAutoscalerList
+
+	// if targetNamespace is "all", get all namespaces, else get the specified namespace
+	if targetNamespace == "all" {
+		hpaList, err = clientset.AutoscalingV1().HorizontalPodAutoscalers("").List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
+	} else {
+		hpaList, err = hpaClient.List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
 	}
-	// HPA MAX Replicas 3개 이상인 HPA 변경
 
+	// HPA MAX Replicas 3개 이상인 HPA 변경
 	for i, hpa := range hpaList.Items {
+		if targetNamespace == "all" {
+			hpaClient = clientset.AutoscalingV1().HorizontalPodAutoscalers(hpa.Namespace)
+		}
 		if hpa.Spec.MaxReplicas > 99 {
 			originalReplicas := hpa.Spec.MaxReplicas
-			hpa.Spec.MaxReplicas = 3
+			hpa.Spec.MaxReplicas = 10
 			_, err := hpaClient.Update(context.Background(), &hpa, metav1.UpdateOptions{})
 			if err != nil {
 				log.Printf("%s 네임스페이스의 HPA %s 업데이트 실패: %s", hpa.Namespace, hpa.Name, err)
